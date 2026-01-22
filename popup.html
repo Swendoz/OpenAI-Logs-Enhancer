@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenAI Logs Enhancer</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class="title">OpenAI Logs Enhancer</div>
+        <div class="sub">Toggle columns on platform.openai.com/logs</div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Base columns</div>
+        <div id="baseList" class="list"></div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Injected columns</div>
+        <div id="colList" class="list"></div>
+      </div>
+
+      <div class="footer">
+        <button id="resetBtn" class="btn">Reset defaults</button>
+        <div id="status" class="status"></div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

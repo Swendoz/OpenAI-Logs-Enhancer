@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "name": "OpenAI Logs Enhancer",
+    "version": "1.0.0",
+    "description": "Adss toggleable columns like Usage to platform.openai.com/logs",
+    "permissions": [
+        "storage",
+        "scripting",
+        "activeTab"
+    ],
+    "host_permissions": [
+        "https://platform.openai.com/*"
+    ],
+    "background": {
+        "service_worker": "service_worker.js"
+    },
+    "action": {
+        "default_title": "OpenAI Logs Enhancer",
+        "default_popup": "popup.html"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://platform.openai.com/logs*"],
+            "js": ["content.js"],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["inject.js"],
+            "matches": ["https://platform.openai.com/*"]
+        }
+    ]
+  }

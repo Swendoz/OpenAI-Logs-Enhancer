@@ -1,0 +1,128 @@
+:root {
+    color-scheme: dark;
+  }
+  
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    background: #0b0b0d;
+    color: rgba(255, 255, 255, 0.92);
+    width: 320px;
+  }
+  
+  .wrap {
+    padding: 12px 12px 14px 12px;
+  }
+  
+  .header {
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+  }
+  
+  .title {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  
+  .sub {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.75;
+  }
+  
+  .section {
+    margin-top: 12px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+  }
+  
+  .sectionTitle {
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0.85;
+    margin-bottom: 8px;
+  }
+  
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .label {
+    font-size: 12px;
+    opacity: 0.92;
+  }
+  
+  .toggle {
+    width: 44px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    position: relative;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  
+  .knob {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 3px;
+    transition: left 120ms ease;
+  }
+  
+  .toggle.on {
+    background: rgba(80, 200, 120, 0.18);
+    border-color: rgba(80, 200, 120, 0.35);
+  }
+  
+  .toggle.on .knob {
+    left: 22px;
+  }
+  
+  .footer {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .btn {
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.92);
+    cursor: pointer;
+  }
+  
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+  }
+  
+  .status {
+    font-size: 12px;
+    opacity: 0.75;
+    min-height: 14px;
+    text-align: right;
+  }
+  
