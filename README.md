@@ -4,7 +4,7 @@ A Chrome browser extension that adds useful columns and features to the OpenAI p
 
 ## What It Does
 
-This extension makes it easier to view and manage your OpenAI API logs. It adds new columns to the logs table and lets you show or hide columns as needed.
+This extension makes it easier to view and manage your OpenAI API logs. It adds new columns to the logs table and lets you show or hide columns as needed. Token usage appears as soon as the page loads, including the first batch of logs, without needing to scroll first.
 
 ## Important Warning
 
@@ -31,8 +31,8 @@ These class names are subject to change without notice and may break the extensi
 - **Created** - Show or hide the created date column
 
 ### New Columns Added
-- **Usage** - Shows total tokens used. Hover to see breakdown (input tokens, output tokens, total)
-- **ID** - Shows the request ID
+- **Usage** - Shows total tokens used. Hover to see a full breakdown
+- **ID** - Shows the response or request ID
 - **Temperature** - Shows the temperature setting used
 - **Presence Penalty** - Shows the presence penalty value
 - **Frequency Penalty** - Shows the frequency penalty value
@@ -69,10 +69,13 @@ These class names are subject to change without notice and may break the extensi
 4. Changes apply immediately to the logs page
 
 ### Usage Column
-- Shows total tokens in a pill format
-- Hover over it to see detailed breakdown:
+- Shows total tokens in a pill format (for example `Total: 9768`)
+- Appears on the first page load as soon as log data is fetched
+- Hover over it to see a detailed breakdown:
   - Input tokens
   - Output tokens
+  - Cached tokens (when available)
+  - Reasoning tokens (when available, for example GPT-5 reasoning models)
   - Total tokens
 
 ### Metadata Column
@@ -94,25 +97,55 @@ All settings are saved automatically. You can:
 
 ## How It Works
 
-The extension intercepts API responses that the OpenAI platform already makes to load log data. It does not make its own API requests. When you visit the logs page, the platform automatically fetches data from:
+The extension intercepts API responses that the OpenAI platform already makes to load log data. It does not make its own API requests.
 
-`https://api.openai.com/v1/dashboard/chat/completions?limit=100`
+When you visit the logs page, the platform fetches data from one of these endpoints:
 
-The extension captures these responses and extracts additional data (like usage, temperature, metadata, etc.) that is available in the API response but not displayed in the UI. This data is then shown in the new columns.
+- `https://api.openai.com/v1/responses` (current Responses API)
+- `https://api.openai.com/v1/dashboard/responses`
+- `https://api.openai.com/v1/dashboard/chat/completions` (legacy Chat Completions API)
+
+The extension captures these responses and extracts additional fields (usage, temperature, metadata, and so on) that are available in the API response but not shown in the default UI. This data is then rendered in the new columns.
+
+### API compatibility
+
+The extension supports both response formats:
+
+| Format | Token fields |
+|--------|----------------|
+| Responses API | `input_tokens`, `output_tokens`, `total_tokens` |
+| Chat Completions API | `prompt_tokens`, `completion_tokens`, `total_tokens` |
+
+For Responses API entries, extra usage details are read when present:
+
+- `usage.input_tokens_details.cached_tokens`
+- `usage.output_tokens_details.reasoning_tokens`
+
+Log rows are matched by response ID (for example `resp_...`) or request ID (for example `req_...`).
+
+### Load timing
+
+To avoid missing the first batch of logs, the extension starts early:
+
+1. `inject.js` runs at `document_start` in the page context (`MAIN` world) and patches `fetch` / `XMLHttpRequest` before the platform loads data
+2. `content.js` runs at `document_start` in the isolated extension context and listens for intercepted records
+3. When usage data arrives, rows are updated even if they were rendered before the API response came back
 
 ## Technical Details
 
 - **Manifest Version**: 3
 - **Permissions**: Storage, Scripting, Active Tab
 - **Works on**: `https://platform.openai.com/logs*`
-- **Data Source**: Intercepts responses from `https://api.openai.com/v1/dashboard/chat/completions`
+- **Injection**: `inject.js` at `document_start` in `MAIN` world; `content.js` at `document_start` in isolated world
+- **Data Source**: Intercepts responses from `/v1/responses`, `/v1/dashboard/responses`, and `/v1/dashboard/chat/completions`
+- **Communication**: `inject.js` sends intercepted records to `content.js` via `window.postMessage`
 
 ## Files
 
 - `manifest.json` - Extension configuration
-- `content.js` - Main script that runs on the logs page
+- `content.js` - Main script: UI columns, stats, settings, row rendering
+- `inject.js` - Page-context script that intercepts platform API responses
 - `popup.html/js/css` - Extension popup interface
-- `inject.js` - Injected script for enhanced functionality
 - `service_worker.js` - Background service worker
 
 ## License

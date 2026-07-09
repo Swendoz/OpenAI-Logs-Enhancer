@@ -1,6 +1,14 @@
 (function () {
+    if (window.__OLE_INJECTED__) return;
+    window.__OLE_INJECTED__ = true;
+
     function isTargetUrl(url) {
-      return typeof url === "string" && url.includes("/v1/dashboard/chat/completions");
+      if (typeof url !== "string") return false;
+      return (
+        url.includes("/v1/dashboard/chat/completions") ||
+        url.includes("/v1/dashboard/responses") ||
+        url.includes("/v1/responses")
+      );
     }
   
     function safeParseJson(text) {
@@ -12,15 +20,20 @@
     }
   
     function normalizeUsage(usage) {
-      if (!usage || typeof usage !== "object") return { inTok: null, outTok: null, totalTok: null };
-  
+      if (!usage || typeof usage !== "object") {
+        return { inTok: null, outTok: null, totalTok: null, cachedTok: null, reasoningTok: null };
+      }
+
       const inTok = usage.prompt_tokens ?? usage.input_tokens ?? null;
       const outTok = usage.completion_tokens ?? usage.output_tokens ?? null;
-  
+
       let totalTok = usage.total_tokens ?? null;
       if (totalTok == null && inTok != null && outTok != null) totalTok = inTok + outTok;
-  
-      return { inTok, outTok, totalTok };
+
+      const cachedTok = usage.input_tokens_details?.cached_tokens ?? usage.cache_read_tokens ?? null;
+      const reasoningTok = usage.output_tokens_details?.reasoning_tokens ?? null;
+
+      return { inTok, outTok, totalTok, cachedTok, reasoningTok };
     }
   
     function postRecordsFromJson(json) {

@@ -1,5 +1,3 @@
-let settings = null;
-
 const DEFAULT_SETTINGS = {
   base_input: true,
   base_output: true,
@@ -13,6 +11,8 @@ const DEFAULT_SETTINGS = {
   col_frequency_penalty: false,
   col_metadata: false
 };
+
+let settings = { ...DEFAULT_SETTINGS };
 
 const recordsByAnyId = new Map();
 const seenUnique = new Set();
@@ -33,7 +33,7 @@ async function loadSettings() {
 }
 
 function ensureInjectedScript() {
-  if (document.getElementById("ole-inject")) return;
+  if (window.__OLE_INJECTED__ || document.getElementById("ole-inject")) return;
   const script = document.createElement("script");
   script.id = "ole-inject";
   script.src = chrome.runtime.getURL("inject.js");
@@ -253,13 +253,28 @@ function showUsagePortal(anchorEl, usage) {
   outputRow.className = "ole-tooltip-row";
   outputRow.innerHTML = `<span>Output</span><span>${usage?.outTok ?? ""}</span>`;
 
+  portal.appendChild(title);
+  portal.appendChild(inputRow);
+  portal.appendChild(outputRow);
+
+  if (typeof usage?.cachedTok === "number" && usage.cachedTok > 0) {
+    const cachedRow = document.createElement("div");
+    cachedRow.className = "ole-tooltip-row";
+    cachedRow.innerHTML = `<span>Cached</span><span>${usage.cachedTok}</span>`;
+    portal.appendChild(cachedRow);
+  }
+
+  if (typeof usage?.reasoningTok === "number" && usage.reasoningTok > 0) {
+    const reasoningRow = document.createElement("div");
+    reasoningRow.className = "ole-tooltip-row";
+    reasoningRow.innerHTML = `<span>Reasoning</span><span>${usage.reasoningTok}</span>`;
+    portal.appendChild(reasoningRow);
+  }
+
   const totalRow = document.createElement("div");
   totalRow.className = "ole-tooltip-row ole-tooltip-strong";
   totalRow.innerHTML = `<span>Total</span><span>${usage?.totalTok ?? ""}</span>`;
 
-  portal.appendChild(title);
-  portal.appendChild(inputRow);
-  portal.appendChild(outputRow);
   portal.appendChild(totalRow);
 
   positionPortal(portal, anchorEl);
@@ -434,17 +449,27 @@ function getInjectedStamp() {
   return String(injectedStamp);
 }
 
+function getRecordCacheKey(record) {
+  if (!record) return "none";
+  const usage = record.usage || {};
+  return `${record.id || ""}:${record.requestId || ""}:${usage.totalTok}:${usage.inTok}:${usage.outTok}`;
+}
+
 function applyInjectedColumnsToRow(row) {
   const rowId = extractIdFromRowHref(row);
   if (!rowId) return;
 
   const stamp = getInjectedStamp();
-  if (row.getAttribute("data-ole-stamp") === stamp) return;
+  const record = recordsByAnyId.get(rowId) || null;
+  const recordKey = getRecordCacheKey(record);
+
+  if (row.getAttribute("data-ole-stamp") === stamp && row.getAttribute("data-ole-record-key") === recordKey) {
+    return;
+  }
 
   for (const cell of Array.from(row.querySelectorAll("[data-ole-cell='1']"))) cell.remove();
 
   const columnDefs = getInjectedColumnDefs();
-  const record = recordsByAnyId.get(rowId) || (rowId.startsWith("req_") ? recordsByAnyId.get(rowId) : null) || null;
 
   for (const def of columnDefs) {
     const cell = document.createElement("div");
@@ -462,6 +487,7 @@ function applyInjectedColumnsToRow(row) {
   }
 
   row.setAttribute("data-ole-stamp", stamp);
+  row.setAttribute("data-ole-record-key", recordKey);
 }
 
 function applyInjectedColumnsToAllRows() {
@@ -506,21 +532,48 @@ function renderMetadataCell(rec) {
 }
 
 function normalizeUsage(usage) {
-  if (!usage || typeof usage !== "object") return { inTok: null, outTok: null, totalTok: null };
+  if (!usage || typeof usage !== "object") {
+    return { inTok: null, outTok: null, totalTok: null, cachedTok: null, reasoningTok: null };
+  }
 
   const inTokCustom = typeof usage.inTok === "number" ? usage.inTok : null;
   const outTokCustom = typeof usage.outTok === "number" ? usage.outTok : null;
   const totalTokCustom = typeof usage.totalTok === "number" ? usage.totalTok : null;
+  const cachedTokCustom = typeof usage.cachedTok === "number" ? usage.cachedTok : null;
+  const reasoningTokCustom = typeof usage.reasoningTok === "number" ? usage.reasoningTok : null;
 
-  const inTokOpenAI = typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null;
-  const outTokOpenAI = typeof usage.completion_tokens === "number" ? usage.completion_tokens : null;
+  const inTokOpenAI =
+    typeof usage.prompt_tokens === "number"
+      ? usage.prompt_tokens
+      : typeof usage.input_tokens === "number"
+        ? usage.input_tokens
+        : null;
+  const outTokOpenAI =
+    typeof usage.completion_tokens === "number"
+      ? usage.completion_tokens
+      : typeof usage.output_tokens === "number"
+        ? usage.output_tokens
+        : null;
   const totalTokOpenAI = typeof usage.total_tokens === "number" ? usage.total_tokens : null;
+  const cachedTokOpenAI =
+    typeof usage.input_tokens_details?.cached_tokens === "number"
+      ? usage.input_tokens_details.cached_tokens
+      : typeof usage.cache_read_tokens === "number"
+        ? usage.cache_read_tokens
+        : null;
+  const reasoningTokOpenAI =
+    typeof usage.output_tokens_details?.reasoning_tokens === "number"
+      ? usage.output_tokens_details.reasoning_tokens
+      : null;
 
   const inTok = inTokCustom ?? inTokOpenAI;
   const outTok = outTokCustom ?? outTokOpenAI;
-  const totalTok = totalTokCustom ?? totalTokOpenAI ?? (typeof inTok === "number" && typeof outTok === "number" ? inTok + outTok : null);
+  const totalTok =
+    totalTokCustom ?? totalTokOpenAI ?? (typeof inTok === "number" && typeof outTok === "number" ? inTok + outTok : null);
+  const cachedTok = cachedTokCustom ?? cachedTokOpenAI;
+  const reasoningTok = reasoningTokCustom ?? reasoningTokOpenAI;
 
-  return { inTok, outTok, totalTok };
+  return { inTok, outTok, totalTok, cachedTok, reasoningTok };
 }
 
 function renderUsageCell(record) {
@@ -685,6 +738,7 @@ function handleRecordsBatch(records) {
 
   if (!changed) return;
 
+  bumpInjectedStamp();
   ensureStatsInjected();
   updateStatsInjected();
 
@@ -702,7 +756,6 @@ function observeTableAndHrefChanges() {
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      if (!settings) return;
       ensureStatsInjected();
       updateStatsInjected();
       applyBaseColumnVisibility();
@@ -803,7 +856,6 @@ async function start() {
 
   ensureStyles();
   ensureInjectedScript();
-  initMessageBridge();
   setupLiveUpdates();
 
   await loadSettings();
@@ -822,8 +874,12 @@ async function start() {
   const retryInterval = setInterval(() => {
     tries += 1;
     ensureStatsInjected();
+    applyInjectedColumnsToAllRows();
     if (statsEl?.isConnected || tries >= 30) clearInterval(retryInterval);
   }, 500);
 }
 
-start();
+if (isLogsPage()) {
+  initMessageBridge();
+  start();
+}
