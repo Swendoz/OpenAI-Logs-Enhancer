@@ -21,7 +21,7 @@
   
     function normalizeUsage(usage) {
       if (!usage || typeof usage !== "object") {
-        return { inTok: null, outTok: null, totalTok: null, cachedTok: null, reasoningTok: null };
+        return { inTok: null, outTok: null, totalTok: null, cachedTok: null, cacheWriteTok: null, reasoningTok: null };
       }
 
       const inTok = usage.prompt_tokens ?? usage.input_tokens ?? null;
@@ -30,10 +30,18 @@
       let totalTok = usage.total_tokens ?? null;
       if (totalTok == null && inTok != null && outTok != null) totalTok = inTok + outTok;
 
-      const cachedTok = usage.input_tokens_details?.cached_tokens ?? usage.cache_read_tokens ?? null;
+      const cachedTok =
+        usage.input_tokens_details?.cached_tokens ??
+        usage.prompt_tokens_details?.cached_tokens ??
+        usage.cache_read_tokens ??
+        null;
+      const cacheWriteTok =
+        usage.input_tokens_details?.cache_write_tokens ??
+        usage.prompt_tokens_details?.cache_write_tokens ??
+        null;
       const reasoningTok = usage.output_tokens_details?.reasoning_tokens ?? null;
 
-      return { inTok, outTok, totalTok, cachedTok, reasoningTok };
+      return { inTok, outTok, totalTok, cachedTok, cacheWriteTok, reasoningTok };
     }
   
     function postRecordsFromJson(json) {
@@ -50,6 +58,7 @@
           return {
             id,
             requestId,
+            model: typeof row.model === "string" ? row.model : null,
             usage: normalizeUsage(row.usage),
             temperature: typeof row.temperature === "number" ? row.temperature : null,
             presencePenalty: typeof row.presence_penalty === "number" ? row.presence_penalty : null,

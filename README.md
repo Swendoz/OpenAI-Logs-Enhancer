@@ -32,6 +32,7 @@ These class names are subject to change without notice and may break the extensi
 
 ### New Columns Added
 - **Usage** - Shows total tokens used. Hover to see a full breakdown
+- **Cost** - Shows estimated cost in EUR based on model and token usage. Hover for input/cached/cache-write/output breakdown
 - **ID** - Shows the response or request ID
 - **Temperature** - Shows the temperature setting used
 - **Presence Penalty** - Shows the presence penalty value
@@ -75,8 +76,19 @@ These class names are subject to change without notice and may break the extensi
   - Input tokens
   - Output tokens
   - Cached tokens (when available)
+  - Cache write tokens (when available, GPT-5.6+ models)
   - Reasoning tokens (when available, for example GPT-5 reasoning models)
   - Total tokens
+
+### Cost Column
+- Shows estimated cost in EUR (for example `€0.0245`)
+- Calculated from OpenAI Standard API list prices per model
+- Uses uncached input, cached input, cache write, and output token counts
+- Reasoning tokens are included in output billing (same as OpenAI)
+- Hover for a full EUR breakdown by token category
+- Model is read from the API response or the table's Model column
+- OpenAI list prices are in USD; the extension converts them to EUR using a configurable **USD → EUR** rate (default **0.87**)
+- Change the rate in the popup under **Cost settings**; cost cells update immediately on the logs page
 
 ### Metadata Column
 - Shows metadata as small chips
@@ -93,6 +105,7 @@ These class names are subject to change without notice and may break the extensi
 
 All settings are saved automatically. You can:
 - Toggle any column on or off
+- Set the **USD → EUR** conversion rate for cost estimates (default `0.87`)
 - Click "Reset defaults" to restore original settings
 
 ## How It Works
@@ -119,9 +132,24 @@ The extension supports both response formats:
 For Responses API entries, extra usage details are read when present:
 
 - `usage.input_tokens_details.cached_tokens`
+- `usage.prompt_tokens_details.cached_tokens`
+- `usage.input_tokens_details.cache_write_tokens`
 - `usage.output_tokens_details.reasoning_tokens`
 
 Log rows are matched by response ID (for example `resp_...`) or request ID (for example `req_...`).
+
+### Cost calculation
+
+Per request, cost is computed as:
+
+```
+(uncached_input × input_rate)
++ (cached_input × cached_input_rate)
++ (cache_write_tokens × cache_write_rate)
++ (output_tokens × output_rate)
+```
+
+Where `uncached_input = input_tokens − cached_tokens`. Pricing data comes from OpenAI's Standard tier and is stored in `pricing.js`. The final EUR amount is `total_usd × usd_to_eur` (user-configurable in the popup, default `0.87`).
 
 ### Load timing
 
@@ -144,6 +172,7 @@ To avoid missing the first batch of logs, the extension starts early:
 
 - `manifest.json` - Extension configuration
 - `content.js` - Main script: UI columns, stats, settings, row rendering
+- `pricing.js` - OpenAI model pricing and EUR cost calculation
 - `inject.js` - Page-context script that intercepts platform API responses
 - `popup.html/js/css` - Extension popup interface
 - `service_worker.js` - Background service worker

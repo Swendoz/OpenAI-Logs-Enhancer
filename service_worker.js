@@ -4,11 +4,13 @@ const DEFAULT_SETTINGS = {
     base_model: true,
     base_created: true,
     col_usage: true,
+    col_cost: true,
     col_id: false,
     col_temperature: false,
     col_presence_penalty: false,
     col_frequency_penalty: false,
-    col_metadata: false
+    col_metadata: false,
+    usd_to_eur: 0.87
   };
   
   chrome.runtime.onInstalled.addListener(async () => {

@@ -5,11 +5,13 @@ const DEFAULT_SETTINGS = {
   base_created: true,
 
   col_usage: true,
+  col_cost: true,
   col_id: false,
   col_temperature: false,
   col_presence_penalty: false,
   col_frequency_penalty: false,
-  col_metadata: false
+  col_metadata: false,
+  usd_to_eur: 0.87
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -30,6 +32,12 @@ async function loadSettings() {
   for (const key of keys) result[key] = typeof stored[key] === "undefined" ? DEFAULT_SETTINGS[key] : stored[key];
   settings = result;
   return result;
+}
+
+function getUsdToEur() {
+  const rate = settings.usd_to_eur;
+  if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) return rate;
+  return typeof DEFAULT_USD_TO_EUR === "number" ? DEFAULT_USD_TO_EUR : 0.87;
 }
 
 function ensureInjectedScript() {
@@ -193,7 +201,17 @@ function ensureStyles() {
 
 
 let usagePortal = null;
+let costPortal = null;
 let metaPortal = null;
+
+function ensureCostPortal() {
+  if (costPortal) return costPortal;
+  const portal = document.createElement("div");
+  portal.className = "ole-tooltip-portal";
+  document.body.appendChild(portal);
+  costPortal = portal;
+  return portal;
+}
 
 function ensureUsagePortal() {
   if (usagePortal) return usagePortal;
@@ -237,6 +255,61 @@ function positionPortal(portal, anchorEl) {
   portal.style.top = `${top}px`;
 }
 
+function hideCostPortal() {
+  if (!costPortal) return;
+  costPortal.style.display = "none";
+}
+
+function showCostPortal(anchorEl, costResult, modelLabel) {
+  const portal = ensureCostPortal();
+  portal.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "ole-tooltip-title";
+  title.textContent = "Cost breakdown (EUR)";
+
+  portal.appendChild(title);
+
+  if (modelLabel) {
+    const modelRow = document.createElement("div");
+    modelRow.className = "ole-tooltip-row";
+    modelRow.innerHTML = `<span>Model</span><span>${modelLabel}</span>`;
+    portal.appendChild(modelRow);
+  }
+
+  const { breakdown, usdToEur, modelKey } = costResult;
+  const toEur = (usd) => usd * usdToEur;
+
+  const rows = [
+    ["Input (uncached)", breakdown.uncached, breakdown.uncachedCost],
+    ["Cached input", breakdown.cached, breakdown.cachedCost],
+    ["Cache write", breakdown.cacheWrite, breakdown.cacheWriteCost],
+    ["Output", breakdown.output, breakdown.outputCost]
+  ];
+
+  for (const [label, tokens, usdCost] of rows) {
+    if (!tokens && !usdCost) continue;
+    const row = document.createElement("div");
+    row.className = "ole-tooltip-row";
+    row.innerHTML = `<span>${label}${tokens ? ` (${tokens})` : ""}</span><span>${formatEur(toEur(usdCost))}</span>`;
+    portal.appendChild(row);
+  }
+
+  const totalRow = document.createElement("div");
+  totalRow.className = "ole-tooltip-row ole-tooltip-strong";
+  totalRow.innerHTML = `<span>Total</span><span>${formatEur(costResult.totalEur)}</span>`;
+  portal.appendChild(totalRow);
+
+  const note = document.createElement("div");
+  note.style.marginTop = "8px";
+  note.style.opacity = "0.72";
+  note.style.fontSize = "11px";
+  note.textContent = `OpenAI list price (${modelKey}) × ${usdToEur.toFixed(2)} USD/EUR`;
+  portal.appendChild(note);
+
+  positionPortal(portal, anchorEl);
+}
+
 function showUsagePortal(anchorEl, usage) {
   const portal = ensureUsagePortal();
   portal.innerHTML = "";
@@ -262,6 +335,13 @@ function showUsagePortal(anchorEl, usage) {
     cachedRow.className = "ole-tooltip-row";
     cachedRow.innerHTML = `<span>Cached</span><span>${usage.cachedTok}</span>`;
     portal.appendChild(cachedRow);
+  }
+
+  if (typeof usage?.cacheWriteTok === "number" && usage.cacheWriteTok > 0) {
+    const cacheWriteRow = document.createElement("div");
+    cacheWriteRow.className = "ole-tooltip-row";
+    cacheWriteRow.innerHTML = `<span>Cache write</span><span>${usage.cacheWriteTok}</span>`;
+    portal.appendChild(cacheWriteRow);
   }
 
   if (typeof usage?.reasoningTok === "number" && usage.reasoningTok > 0) {
@@ -356,6 +436,18 @@ function applyBaseColumnVisibility() {
 }
 
 
+function getModelFromRow(row) {
+  const modelIndex = findBaseColumnIndex("Model");
+  if (modelIndex < 0 || !row) return null;
+  const cells = getRowCells(row);
+  const text = (cells[modelIndex]?.textContent || "").trim();
+  return text || null;
+}
+
+function resolveRecordModel(record, row) {
+  return record?.model || getModelFromRow(row) || null;
+}
+
 function getInjectedColumnDefs() {
   const columnDefs = [];
 
@@ -365,6 +457,15 @@ function getInjectedColumnDefs() {
       label: "Usage",
       width: "130px",
       getNode: (record) => renderUsageCell(record)
+    });
+  }
+
+  if (settings?.col_cost) {
+    columnDefs.push({
+      key: "col_cost",
+      label: "Cost",
+      width: "110px",
+      getNode: (record, rowId, row) => renderCostCell(record, row)
     });
   }
 
@@ -449,10 +550,11 @@ function getInjectedStamp() {
   return String(injectedStamp);
 }
 
-function getRecordCacheKey(record) {
-  if (!record) return "none";
+function getRecordCacheKey(record, row) {
+  if (!record) return `none:${getModelFromRow(row) || ""}`;
   const usage = record.usage || {};
-  return `${record.id || ""}:${record.requestId || ""}:${usage.totalTok}:${usage.inTok}:${usage.outTok}`;
+  const model = resolveRecordModel(record, row) || "";
+  return `${record.id || ""}:${record.requestId || ""}:${model}:${usage.totalTok}:${usage.inTok}:${usage.outTok}:${usage.cachedTok}:${usage.cacheWriteTok}`;
 }
 
 function applyInjectedColumnsToRow(row) {
@@ -461,7 +563,7 @@ function applyInjectedColumnsToRow(row) {
 
   const stamp = getInjectedStamp();
   const record = recordsByAnyId.get(rowId) || null;
-  const recordKey = getRecordCacheKey(record);
+  const recordKey = getRecordCacheKey(record, row);
 
   if (row.getAttribute("data-ole-stamp") === stamp && row.getAttribute("data-ole-record-key") === recordKey) {
     return;
@@ -480,7 +582,7 @@ function applyInjectedColumnsToRow(row) {
     cell.style.setProperty("--logs-table-item-width", def.width || "auto");
     cell.style.setProperty("--logs-table-item-min-width", "auto");
 
-    if (def.getNode) cell.appendChild(def.getNode(record));
+    if (def.getNode) cell.appendChild(def.getNode(record, rowId, row));
     else cell.textContent = def.getText ? def.getText(record, rowId) : "";
 
     row.appendChild(cell);
@@ -533,13 +635,14 @@ function renderMetadataCell(rec) {
 
 function normalizeUsage(usage) {
   if (!usage || typeof usage !== "object") {
-    return { inTok: null, outTok: null, totalTok: null, cachedTok: null, reasoningTok: null };
+    return { inTok: null, outTok: null, totalTok: null, cachedTok: null, cacheWriteTok: null, reasoningTok: null };
   }
 
   const inTokCustom = typeof usage.inTok === "number" ? usage.inTok : null;
   const outTokCustom = typeof usage.outTok === "number" ? usage.outTok : null;
   const totalTokCustom = typeof usage.totalTok === "number" ? usage.totalTok : null;
   const cachedTokCustom = typeof usage.cachedTok === "number" ? usage.cachedTok : null;
+  const cacheWriteTokCustom = typeof usage.cacheWriteTok === "number" ? usage.cacheWriteTok : null;
   const reasoningTokCustom = typeof usage.reasoningTok === "number" ? usage.reasoningTok : null;
 
   const inTokOpenAI =
@@ -558,8 +661,16 @@ function normalizeUsage(usage) {
   const cachedTokOpenAI =
     typeof usage.input_tokens_details?.cached_tokens === "number"
       ? usage.input_tokens_details.cached_tokens
-      : typeof usage.cache_read_tokens === "number"
-        ? usage.cache_read_tokens
+      : typeof usage.prompt_tokens_details?.cached_tokens === "number"
+        ? usage.prompt_tokens_details.cached_tokens
+        : typeof usage.cache_read_tokens === "number"
+          ? usage.cache_read_tokens
+          : null;
+  const cacheWriteTokOpenAI =
+    typeof usage.input_tokens_details?.cache_write_tokens === "number"
+      ? usage.input_tokens_details.cache_write_tokens
+      : typeof usage.prompt_tokens_details?.cache_write_tokens === "number"
+        ? usage.prompt_tokens_details.cache_write_tokens
         : null;
   const reasoningTokOpenAI =
     typeof usage.output_tokens_details?.reasoning_tokens === "number"
@@ -571,9 +682,10 @@ function normalizeUsage(usage) {
   const totalTok =
     totalTokCustom ?? totalTokOpenAI ?? (typeof inTok === "number" && typeof outTok === "number" ? inTok + outTok : null);
   const cachedTok = cachedTokCustom ?? cachedTokOpenAI;
+  const cacheWriteTok = cacheWriteTokCustom ?? cacheWriteTokOpenAI;
   const reasoningTok = reasoningTokCustom ?? reasoningTokOpenAI;
 
-  return { inTok, outTok, totalTok, cachedTok, reasoningTok };
+  return { inTok, outTok, totalTok, cachedTok, cacheWriteTok, reasoningTok };
 }
 
 function renderUsageCell(record) {
@@ -589,6 +701,36 @@ function renderUsageCell(record) {
 
   wrapper.addEventListener("mouseenter", () => showUsagePortal(wrapper, usageData));
   wrapper.addEventListener("mouseleave", () => hideUsagePortal());
+
+  return wrapper;
+}
+
+function renderCostCell(record, row) {
+  const usageData = normalizeUsage(record?.usage);
+  const model = resolveRecordModel(record, row);
+  const costResult = calculateCostUsd(model, usageData, getUsdToEur());
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "ole-usage-pill";
+
+  const mainText = document.createElement("div");
+  mainText.className = "ole-usage-main";
+
+  if (!model) {
+    mainText.textContent = "…";
+  } else if (!costResult) {
+    mainText.textContent = "N/A";
+    wrapper.title = `No pricing data for model: ${model}`;
+  } else {
+    mainText.textContent = formatEur(costResult.totalEur);
+  }
+
+  wrapper.appendChild(mainText);
+
+  if (costResult) {
+    wrapper.addEventListener("mouseenter", () => showCostPortal(wrapper, costResult, model));
+    wrapper.addEventListener("mouseleave", () => hideCostPortal());
+  }
 
   return wrapper;
 }
@@ -806,7 +948,7 @@ function setupLiveUpdates() {
 
     let touched = false;
     for (const key of Object.keys(changes)) {
-      if (key.startsWith("col_") || key.startsWith("base_")) {
+      if (key.startsWith("col_") || key.startsWith("base_") || key === "usd_to_eur") {
         touched = true;
         break;
       }
@@ -836,6 +978,7 @@ function setupLiveUpdates() {
     "scroll",
     () => {
       hideUsagePortal();
+      hideCostPortal();
       hideMetaPortal();
     },
     { passive: true }
@@ -845,6 +988,7 @@ function setupLiveUpdates() {
     "resize",
     () => {
       hideUsagePortal();
+      hideCostPortal();
       hideMetaPortal();
     },
     { passive: true }

@@ -27,7 +27,7 @@
         },
         {
             "matches": ["https://platform.openai.com/logs*"],
-            "js": ["content.js"],
+            "js": ["pricing.js", "content.js"],
             "run_at": "document_start"
         }
     ],
